@@ -42,27 +42,39 @@ def upload():
     # file.read() -> Citește tot conținutul fișierului în memorie, sub formă de bytes (un șir binar, adică 0 și 1). file.read()
     # np.frombuffer(..., np.uint8) -> Transformă acei bytes într-un vector NumPy de tip uint8 (numere întregi între 0 și 255). Acum avem o reprezentare numerică a datelor imaginii, dar încă nu este o imagine 2D — doar o listă lungă de numere.
     # cv2.imdecode(..., cv2.IMREAD_COLOR) -> OpenCV ia vectorul de date binare (array-ul de mai sus) și îl decodează într-o imagine color (matrice 3D de pixeli).
-    img = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2IMREAD_COLOR)
+    img = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
+    
+    # 10.11.2025 - imbunatatire cod
 
-    # Fallback OpenCV Transformă poza color într-o poză alb-negru
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # cv2.threshold() compară fiecare pixel din imagine cu o valoare numită prag (threshold).
-    #  gray – imaginea de intrare (alb-negru)
-    # 127 – pragul de tăiere dacă valoarea < 127 →  pixel devine 0 (negru) altfel →  pixel devine 255 (alb)
-    # 255 – valoarea de atribuit pixelilor mai mari decât pragul
-    # cv2.THRESH_BINARY – tipul de prag (binar simplu)
-    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+    # Convertim imaginea în HSV pentru a separa mai bine culorile
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
-    # cv2.RETR_EXTERNAL — modul de extragere a contururilor.
-    # RETR_EXTERNAL → ia doar contururile exterioare (nu și cele interioare, cum ar fi găurile din litera „O”).
-    # cv2.CHAIN_APPROX_SIMPLE — metoda de simplificare a conturului.
-    # Reduce numărul de puncte din contur, păstrând forma generală.
-    # Fără asta (cv2.CHAIN_APPROX_NONE), conturul ar avea fiecare pixel inclus (mult mai mare și inutil).
+    # Definim gamele de culori pentru roșu, verde, albastru
+    lower_red1 = np.array([0, 100, 100])
+    upper_red1 = np.array([10, 255, 255])
+    lower_red2 = np.array([160, 100, 100])
+    upper_red2 = np.array([179, 255, 255])
+    mask_red = cv2.add(cv2.inRange(hsv, lower_red1, upper_red1),
+                    cv2.inRange(hsv, lower_red2, upper_red2))
 
-    # contours  → o listă de contururi, unde fiecare contur este un array de puncte (coordonate x,y).
-    # _         → o structură de ierarhie (nu ne interesează aici).
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    lower_green = np.array([35, 100, 100])
+    upper_green = np.array([85, 255, 255])
+    mask_green = cv2.inRange(hsv, lower_green, upper_green)
 
+    lower_blue = np.array([90, 100, 100])
+    upper_blue = np.array([130, 255, 255])
+    mask_blue = cv2.inRange(hsv, lower_blue, upper_blue)
+
+    # Combinăm toate măștile
+    mask_total = cv2.bitwise_or(mask_red, cv2.bitwise_or(mask_green, mask_blue))
+
+    # Curățăm zgomotul cu morfologie
+    mask_total = cv2.morphologyEx(mask_total, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+
+    # Găsim contururile pe masca totală
+    contours, _ = cv2.findContours(mask_total, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    
     # Creează un dicționar Python pentru a număra fiecare tip de formă.
     shapes = {"triangle": 0, "square": 0, "circle": 0}
     
@@ -111,4 +123,4 @@ def upload():
     })
 
 if __name__ == "__main__":
-    app.run(debug=True, port=8000)
+    app.run(debug=True, port=9000)
